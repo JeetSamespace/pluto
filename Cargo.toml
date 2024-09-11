@@ -1,0 +1,52 @@
+[package]
+name = "pluto"
+version = "0.1.0"
+edition = "2021"
+description = "Pluto distributed proxy gateway system"
+authors = ["Manjeet Pardeshi <your.email@example.com>"]
+license = "MIT"
+repository = "https://github.com/yourusername/pluto"
+readme = "README.md"
+
+# Define the binaries
+[[bin]]
+name = "pluto-gateway"
+path = "src/bin/pluto_gateway.rs"
+
+[[bin]]
+name = "pluto-orbit"
+path = "src/bin/pluto_orbit.rs"
+
+[dependencies]
+# Dependencies can be added based on project needs.
+# Here's a few commonly used ones:
+
+# Asynchronous runtime for Rust
+tokio = { version = "1", features = ["full"] }
+
+# HTTP server and client library
+hyper = "0.14"
+
+# Serialization/Deserialization (for YAML, JSON, etc.)
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.8"
+
+# Logging
+log = "0.4"
+env_logger = "0.9"
+
+# Error handling
+thiserror = "1.0"
+
+# For handling config files (HCL)
+hcl = "0.11"
+
+# Optional: Testing framework (for unit and integration tests)
+tokio-test = "0.4"
+
+# Optional: Dependency for async networking if needed
+reqwest = { version = "0.11", features = ["json"] }
+
+[dev-dependencies]
+# For writing unit and integration tests
+tokio = { version = "1", features = ["full"] }
