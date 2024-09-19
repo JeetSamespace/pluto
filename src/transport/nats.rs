@@ -40,7 +40,7 @@ impl PubSub for NatsPubSub {
             .subscribe(topic.to_string())
             .await
             .map_err(|e| Error::SubscriptionError(e.to_string()))?;
-        let (tx, rx) = mpsc::channel(100);
+        let (tx, rx) = mpsc::channel(100); // 100 is the buffer size
         tokio::spawn(async move {
             while let Some(msg) = subscription.next().await {
                 if let Ok(message) = serde_json::from_slice::<Message>(&msg.payload) {

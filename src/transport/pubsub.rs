@@ -44,6 +44,29 @@ impl<T: PubSub> PubSubManager<T> {
         }
         Ok(())
     }
+
+    pub async fn subscribe_to_topics(
+        &self,
+        topics: &[&str],
+    ) -> Result<mpsc::Receiver<Message>, Error> {
+        let (tx, rx) = mpsc::channel(100);
+
+        for topic in topics {
+            let mut receiver = self.inner.subscribe(topic).await?;
+            let tx = tx.clone();
+
+            tokio::spawn(async move {
+                while let Some(message) = receiver.recv().await {
+                    if tx.send(message).await.is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+
+        Ok(rx)
+    }
+
     pub async fn monitor_latency(&self, interval: Duration) {
         let inner = self.inner.clone();
         self.inner
