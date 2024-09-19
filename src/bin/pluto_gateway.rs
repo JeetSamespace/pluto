@@ -1,3 +1,8 @@
+// import the orbit module which is located in the src/orbit directory
+use pluto::gateway::config;
+
 fn main() {
-    print!("Welcome to pluto gateway")
+    let conf = config::read_gateway_config().expect("Unable to read config");
+    println!("{:?}", conf);
+    print!("Welcome to pluto-gateway")
 }

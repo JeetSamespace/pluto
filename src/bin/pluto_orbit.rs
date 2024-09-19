@@ -1,3 +1,6 @@
+use pluto::orbit::config;
+
 fn main() {
-    print!("Welcome to pluto-orbit")
+    let conf = config::read_orbit_config().expect("Unable to read config");
+    println!("{:?}", conf);
 }
