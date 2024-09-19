@@ -4,11 +4,11 @@ orbit {
 
   gateways = [
     {
-      address = "203.0.113.1"
+      host = "203.0.113.1"
       port    = 8080
     },
     {
-      address = "198.51.100.2"
+      host = "198.51.100.2"
       port    = 8080
     }
   ]
