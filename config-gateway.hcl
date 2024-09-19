@@ -5,24 +5,29 @@ gateway {
   
   services = [
     {
-      name    = "llm"
-      address = "195.16.17.2"
-      port    = 5677
+      name    = "localserver"
+      address = "127.0.0.1"
+      port    = 8081
     },
     {
-      name    = "asr"
-      address = "195.8.18.2"
-      port    = 5677
+      name    = "mercury"
+      address = "127.0.0.1"
+      port    = 8080
     },
     {
-      name    = "tts"
-      address = "195.8.18.2"
-      port    = 5678
+      name  = "qdrant"
+      address = "127.0.0.1"
+      port = 6333
+    },
+    {
+      name  = "cloudflare"
+      address = "1.1.1.1"
+      port = 443
     }
   ]
   
   latency {
-    interval = "5s"
+    interval = "15s"
     timeout  = "1s"
   }
   
