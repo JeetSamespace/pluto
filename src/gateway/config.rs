@@ -1,31 +1,51 @@
-use crate::common::utils::handle_duration_string;
-use serde::Deserialize;
+use crate::common::{types::TransportConfig, utils::handle_duration_string};
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct GatewayConfig {
     pub gateway: Gateway,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Gateway {
     pub name: String,
     pub region: String,
     pub listen_port: u16,
-    pub services: Vec<Service>,
+
+    pub services: Vec<ServiceConfig>,
+    pub transport: TransportConfig,
     pub latency: LatencyConfig,
     pub heartbeat: HeartbeatConfig,
     pub failover: FailoverConfig,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Service {
-    pub name: String,
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServiceConfig {
+    pub id: String,
     pub address: String,
     pub port: u16,
+    pub health_check: HealthCheckConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
+pub struct HealthCheckConfig {
+    pub r#type: HealthCheckType,
+    #[serde(with = "handle_duration_string")]
+    pub interval: Duration,
+    #[serde(with = "handle_duration_string")]
+    pub timeout: Duration,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HealthCheckType {
+    Tcp,
+    Http,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct LatencyConfig {
     #[serde(with = "handle_duration_string")]
     pub interval: Duration,
@@ -33,7 +53,7 @@ pub struct LatencyConfig {
     pub timeout: Duration,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct HeartbeatConfig {
     #[serde(with = "handle_duration_string")]
     pub interval: Duration,
@@ -42,7 +62,7 @@ pub struct HeartbeatConfig {
     pub timeout: Duration,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct FailoverConfig {
     pub retries: u32,
     #[serde(with = "handle_duration_string")]

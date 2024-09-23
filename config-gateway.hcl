@@ -1,3 +1,5 @@
+
+
 gateway {
   name        = "frankfurt-gateway"
   region      = "eu-central-1"
@@ -5,21 +7,47 @@ gateway {
   
   services = [
     {
-      name    = "llm"
-      address = "195.16.17.2"
-      port    = 5677
-    },
-    {
+      id = "asr"
       name    = "asr"
-      address = "195.8.18.2"
-      port    = 5677
+      address = "127.0.0.1"
+      port    = 5500
+      health_check = {
+        type = "http"
+        url = "http://127.0.0.1:5500/"
+        interval = "10s"
+        timeout = "2s"
+      }
     },
     {
+      id = "tts"
       name    = "tts"
-      address = "195.8.18.2"
-      port    = 5678
-    }
+      address = "127.0.0.1"
+      port    = 5501
+      health_check = {
+        type = "tcp"
+        interval = "10s"
+        timeout = "2s"
+      }
+    },
+    {
+      id = "llm"
+      name    = "llm"
+      address = "127.0.0.1"
+      port    = 5502
+      health_check = {
+        type = "tcp"
+        interval = "10s"
+        timeout = "2s"
+      }
+    },
   ]
+
+  transport {
+    type = "nats"
+    nats  {
+      url = "nats://localhost:4222"
+    }
+  }
   
   latency {
     interval = "5s"
