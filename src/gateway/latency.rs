@@ -1,53 +1,66 @@
-use crate::gateway::config::GatewayConfig;
-use std::collections::HashMap;
-use std::error::Error;
-use std::net::ToSocketAddrs;
+use crate::common::types::{ServiceStat, ServiceStatus};
+
+use super::config::{HealthCheckType, ServiceConfig};
+use reqwest::Client;
+use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
-use tokio::time::{Duration, Instant, interval};
 
-pub async fn calculate_rtt(config: &GatewayConfig) -> Result<(), Box<dyn Error>> {
-    let mut rtt_map = HashMap::new();
-    let interval_duration = config.gateway.latency.interval;
+async fn get_tcp_latency(addr: &str) -> Result<u64, std::io::Error> {
+    let start = Instant::now();
+    let _stream = TcpStream::connect(addr).await?;
+    let latency = start.elapsed().as_millis() as u64;
+    Ok(latency)
+}
 
-    let mut interval = interval(interval_duration);
+async fn get_http_latency(url: &str) -> Result<u64, std::io::Error> {
+    let client = Client::new();
+    let start = Instant::now();
+    let _res = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let latency = start.elapsed().as_millis() as u64;
+    Ok(latency)
+}
 
-    loop {
-        interval.tick().await; // Wait for the next interval
-
-        for service in &config.gateway.services {
-            match ping(&service.address, service.port, config.gateway.latency.timeout).await {
-                Ok(duration) => {
-                    println!("Ping to {} ({}:{}) successful: {:?}", service.name, service.address, service.port, duration);
-                    rtt_map.insert(service.name.clone(), duration);
-                }
+pub async fn get_service_latency(srv: &ServiceConfig) -> ServiceStat {
+    let latency = match srv.health_check.r#type {
+        HealthCheckType::Tcp => {
+            let addr = format!("{}:{}", srv.address, srv.port);
+            let res = get_tcp_latency(&addr).await;
+            match res {
+                Ok(latency) => latency,
                 Err(e) => {
-                    println!("Failed to ping {} ({}:{}): {}", service.name, service.address, service.port, e);
+                    return ServiceStat {
+                        service_id: srv.id.clone(),
+                        status: ServiceStatus::Down,
+                        latency: Duration::from_millis(0),
+                        error: Some(e.to_string()),
+                    }
                 }
             }
         }
+        HealthCheckType::Http => {
+            let res = get_http_latency(srv.health_check.url.as_ref().unwrap()).await;
 
-        // Here you can add logic to use or store the rtt_map as needed
-        // For example, you might want to update a shared state or send it to another part of your application
-        println!("RTT map: {:?}", rtt_map);
-    }
-}
-
-async fn ping(address: &str, port: u16, timeout: Duration) -> Result<Duration, Box<dyn Error>> {
-    println!("Pinging {} on port {}", address, port);
-    // Resolve the address with port to a socket address
-    let addr = format!("{}:{}", address, port).to_socket_addrs()?.next().ok_or("Invalid address")?;
-
-    // Record the start time
-    let start = Instant::now();
-
-    // Attempt to establish a TCP connection with timeout
-    match tokio::time::timeout(timeout, TcpStream::connect(addr)).await {
-        Ok(Ok(_)) => {
-            // Calculate the round-trip time
-            let rtt = start.elapsed();
-            Ok(rtt)
+            match res {
+                Ok(latency) => latency,
+                Err(e) => {
+                    return ServiceStat {
+                        service_id: srv.id.clone(),
+                        status: ServiceStatus::Down,
+                        latency: Duration::from_millis(0),
+                        error: Some(e.to_string()),
+                    }
+                }
+            }
         }
-        Ok(Err(e)) => Err(Box::new(e)),
-        Err(_) => Err("Connection timed out".into()),
+    };
+    ServiceStat {
+        service_id: srv.id.clone(),
+        status: ServiceStatus::Up,
+        latency: Duration::from_millis(latency),
+        error: None,
     }
 }
