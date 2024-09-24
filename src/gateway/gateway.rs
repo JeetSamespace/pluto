@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use pingora::server::Server;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
@@ -12,6 +13,7 @@ use crate::transport;
 use crate::transport::pubsub::{Message, PubSubManager};
 use crate::transport::topics::PubSubTopics;
 
+#[derive(Debug)]
 pub struct Gateway {
     id: String,
     gateway_config: GatewayConfig,
@@ -50,9 +52,7 @@ impl Gateway {
                     .nats
                     .clone()
                     .context("NATS configuration missing")?;
-                transport::nats::NatsPubSub::new(nats_config)
-                    .await
-                    .context("Failed to create NATS PubSub")
+                transport::nats::NatsPubSub::new(nats_config).await
             }
             _ => anyhow::bail!("Invalid transport type"),
         }
@@ -79,6 +79,17 @@ impl Gateway {
         Ok(())
     }
 
+    pub fn start_pingora_server(self: &Arc<Self>) -> Result<()> {
+        std::thread::spawn(|| {
+            info!("starting pingora server");
+            let mut my_server = Server::new(None).unwrap();
+            my_server.bootstrap();
+            my_server.run_forever();
+        });
+
+        Ok(())
+    }
+
     fn spawn_stats_sender(self: &Arc<Self>) -> JoinHandle<Result<()>> {
         debug!("spawning stats sender");
         let self_clone = Arc::clone(self);
@@ -89,32 +100,6 @@ impl Gateway {
         debug!("spawning stats receiver");
         let self_clone = Arc::clone(self);
         tokio::spawn(async move { self_clone.start_receiving_stats().await })
-    }
-
-    async fn start_receiving_stats(&self) -> Result<()> {
-        info!("starting receiving stats");
-        let mut rcv = self
-            .transport
-            .subscribe_to_topics(&[PubSubTopics::OrbitToGatewayStats])
-            .await
-            .context("Failed to subscribe to topics")?;
-
-        while let Some(msg) = rcv.recv().await {
-            if let Message::GatewayLatencyStats(stats) = msg {
-                self.handle_latency_stats(stats).await?;
-            }
-        }
-        Ok(())
-    }
-
-    async fn handle_latency_stats(&self, stats: GatewayLatencyStats) -> Result<()> {
-        if self.gateway_config.gateway.name == stats.gateway_id {
-            debug!("received latency stats from self, ignoring");
-            return Ok(()); // ignore stats from self
-        }
-        self.store
-            .update_gateway_to_service_stats(stats, &self.services);
-        Ok(())
     }
 
     async fn start_sending_stats(&self) -> Result<()> {
@@ -142,5 +127,31 @@ impl Gateway {
                 .await
                 .context("Failed to broadcast gateway latency stats")?;
         }
+    }
+
+    async fn start_receiving_stats(&self) -> Result<()> {
+        info!("starting receiving stats");
+        let mut rcv = self
+            .transport
+            .subscribe_to_topics(&[PubSubTopics::OrbitToGatewayStats])
+            .await
+            .context("Failed to subscribe to topics")?;
+
+        while let Some(msg) = rcv.recv().await {
+            if let Message::GatewayLatencyStats(stats) = msg {
+                self.handle_latency_stats(stats).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_latency_stats(&self, stats: GatewayLatencyStats) -> Result<()> {
+        if self.gateway_config.gateway.name == stats.gateway_id {
+            debug!("received latency stats from self, ignoring");
+            return Ok(()); // ignore stats from self
+        }
+        self.store
+            .update_gateway_to_service_stats(stats, &self.services);
+        Ok(())
     }
 }

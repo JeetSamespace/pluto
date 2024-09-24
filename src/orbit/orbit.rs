@@ -95,7 +95,9 @@ impl Orbit {
                 &[PubSubTopics::OrbitToGatewayStats],
                 Message::GatewayLatencyStats(stats),
             )
-            .await?;
+            .await
+            .context("failed to broadcast stats")
+            .map_err(|e| Error::PublishError(e.to_string()))?;
         Ok(())
     }
 }

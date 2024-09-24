@@ -1,5 +1,5 @@
-use crate::common::error::Error;
 use crate::common::types::GatewayLatencyStats;
+use anyhow::Error;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
