@@ -9,6 +9,7 @@ use super::config::{GatewayConfig, ServiceConfig};
 use super::latency::get_service_latency;
 use super::store::Store;
 use crate::common::types::{GatewayLatencyStats, TransportType};
+use crate::gateway::pingora::run_pingora;
 use crate::transport;
 use crate::transport::pubsub::{Message, PubSubManager};
 use crate::transport::topics::PubSubTopics;
@@ -76,17 +77,6 @@ impl Gateway {
         }
 
         println!("Shutting down gateway");
-        Ok(())
-    }
-
-    pub fn start_pingora_server(self: &Arc<Self>) -> Result<()> {
-        std::thread::spawn(|| {
-            info!("starting pingora server");
-            let mut my_server = Server::new(None).unwrap();
-            my_server.bootstrap();
-            my_server.run_forever();
-        });
-
         Ok(())
     }
 
