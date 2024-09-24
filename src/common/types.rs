@@ -15,7 +15,20 @@ pub struct ServiceStat {
     pub error: Option<String>,
 }
 
-pub type GatewayLatencyStats = HashMap<String, ServiceStat>;
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GatewayLatencyStats {
+    pub gateway_id: String,
+    pub stats: HashMap<String, ServiceStat>,
+}
+
+impl GatewayLatencyStats {
+    pub fn new(gateway_id: String) -> Self {
+        GatewayLatencyStats {
+            gateway_id,
+            stats: HashMap::new(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TransportConfig {
