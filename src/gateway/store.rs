@@ -21,11 +21,33 @@ pub struct GatewayToGatewayStats {
 
 #[derive(Debug, Clone)]
 pub struct OptimalPath {
-    pub path: Vec<String>,
+    pub gateway: String,
     pub latency: Duration,
     pub last_updated: SystemTime,
 }
 
+/*
+This module defines the data structures and methods for managing and updating statistics related to gateways and services in a network.
+The main structure, `Store`, holds three types of data:
+1. `gateway_to_service`: A mapping from gateway IDs to service IDs, which contains statistics about the latency and last update time for each service.
+2. `gateway_to_gateway`: A mapping from gateway IDs to other gateway IDs, which contains statistics about the latency and last update time for each gateway-to-gateway connection.
+3. `optimal_paths`: A mapping from service IDs to the optimal gateway and the associated latency for reaching that service.
+
+The `Store` struct provides several methods for updating and retrieving these statistics:
+- `new`: Creates a new, empty `Store`.
+- `update_gateway_to_service_stats`: Updates the statistics for a given gateway and its associated services.
+- `update_gateway_to_gateway_stats`: Updates the statistics for a given gateway-to-gateway connection.
+- `update_optimal_path`: Calculates and updates the optimal gateway for a given service.
+- `get_optimal_service_path`: Retrieves the optimal gateway and latency for a given service.
+- `get_gateway_to_service_stats`: Retrieves the statistics for a given gateway and service.
+- `get_gateway_to_gateway_stats`: Retrieves the statistics for a given gateway-to-gateway connection.
+
+When `get_optimal_service_path` is called, it returns an `Option` containing a tuple with two elements:
+1. A `String` representing the gateway ID that has the optimal path to the service.
+2. A `Duration` representing the total latency for the optimal path.
+
+If no optimal path is found, the method returns `None`.
+*/
 #[derive(Debug)]
 pub struct Store {
     // Gateway ID -> Service ID -> Stats
@@ -128,19 +150,19 @@ impl Store {
 
     fn update_optimal_path(&self, service_id: &str) {
         trace!("updating optimal path for service: {}", service_id);
-        if let Some((path, latency)) = self.calculate_optimal_service_path(service_id) {
+        if let Some((gateway, latency)) = self.calculate_optimal_service_path(service_id) {
             let mut optimal_paths = self.optimal_paths.write().unwrap();
             optimal_paths.insert(
                 service_id.to_string(),
                 OptimalPath {
-                    path: path.clone(),
+                    gateway: gateway.clone(),
                     latency,
                     last_updated: SystemTime::now(),
                 },
             );
             debug!(
-                "updated optimal path for service: {}. path: {:?}, latency: {:?}",
-                service_id, path, latency
+                "updated optimal path for service: {}. gateway: {}, latency: {:?}",
+                service_id, gateway, latency
             );
         } else {
             warn!(
@@ -150,7 +172,7 @@ impl Store {
         }
     }
 
-    pub fn get_optimal_service_path(&self, service_id: &str) -> Option<(Vec<String>, Duration)> {
+    pub fn get_optimal_service_path(&self, service_id: &str) -> Option<(String, Duration)> {
         trace!("getting optimal service path for service: {}", service_id);
         self.optimal_paths
             .read()
@@ -158,21 +180,21 @@ impl Store {
             .get(service_id)
             .map(|optimal_path| {
                 trace!(
-                    "found optimal path for service: {}. path: {:?}, latency: {:?}",
+                    "found optimal path for service: {}. gateway: {}, latency: {:?}",
                     service_id,
-                    optimal_path.path,
+                    optimal_path.gateway,
                     optimal_path.latency
                 );
-                (optimal_path.path.clone(), optimal_path.latency)
+                (optimal_path.gateway.clone(), optimal_path.latency)
             })
     }
 
-    fn calculate_optimal_service_path(&self, service_id: &str) -> Option<(Vec<String>, Duration)> {
+    fn calculate_optimal_service_path(&self, service_id: &str) -> Option<(String, Duration)> {
         trace!(
             "calculating optimal service path for service: {}",
             service_id
         );
-        let mut best_path = None;
+        let mut best_gateway = None;
         let mut best_latency = Duration::MAX;
 
         let gateway_to_service = self.gateway_to_service.read().unwrap();
@@ -182,7 +204,7 @@ impl Store {
         for (gateway_id, services) in &*gateway_to_service {
             if let Some(service_stats) = services.get(service_id) {
                 if service_stats.latency < best_latency {
-                    best_path = Some(vec![gateway_id.clone()]);
+                    best_gateway = Some(gateway_id.clone());
                     best_latency = service_stats.latency;
                     trace!(
                         "found better direct path through gateway: {}. latency: {:?}",
@@ -203,7 +225,7 @@ impl Store {
                     let total_latency = gateway_to_gateway_stats.latency + service_stats.latency;
                     if total_latency < best_latency {
                         best_latency = total_latency;
-                        best_path = Some(vec![from_gateway.clone(), intermediate_gateway.clone()]);
+                        best_gateway = Some(intermediate_gateway.clone());
                         trace!(
                             "found better path through gateways: {} -> {}. total latency: {:?}",
                             from_gateway,
@@ -215,12 +237,12 @@ impl Store {
             }
         }
 
-        best_path.map(|path| {
+        best_gateway.map(|gateway| {
             debug!(
-                "calculated optimal path for service: {}. path: {:?}, latency: {:?}",
-                service_id, path, best_latency
+                "calculated optimal path for service: {}. gateway: {}, latency: {:?}",
+                service_id, gateway, best_latency
             );
-            (path, best_latency)
+            (gateway, best_latency)
         })
     }
 
@@ -360,7 +382,7 @@ mod tests {
         optimal_paths.insert(
             "service1".to_string(),
             OptimalPath {
-                path: vec!["gateway1".to_string(), "gateway2".to_string()],
+                gateway: "gateway1".to_string(),
                 latency: Duration::from_secs(3),
                 last_updated: SystemTime::now(),
             },
@@ -369,8 +391,8 @@ mod tests {
 
         let result = store.get_optimal_service_path("service1");
         assert!(result.is_some());
-        let (path, latency) = result.unwrap();
-        assert_eq!(path, vec!["gateway1".to_string(), "gateway2".to_string()]);
+        let (gateway, latency) = result.unwrap();
+        assert_eq!(gateway, "gateway1".to_string());
         assert_eq!(latency, Duration::from_secs(3));
     }
 

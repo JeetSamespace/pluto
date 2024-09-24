@@ -1,4 +1,4 @@
-use crate::common::utils::handle_duration_string;
+use crate::common::{types::TransportConfig, utils::handle_duration_string};
 use serde::Deserialize;
 use std::time::Duration;
 
@@ -11,18 +11,12 @@ pub struct OrbitConfig {
 pub struct Orbit {
     pub listen_port: u16,
     pub max_connections: u32,
-    pub gateways: Vec<GatewayConfig>,
+    pub transport: TransportConfig,
     pub heartbeat: HeartbeatConfig,
     pub load_balancing: LoadBalancingConfig,
     pub security: SecurityConfig,
     pub logging: LoggingConfig,
     pub metrics: MetricsConfig,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct GatewayConfig {
-    pub address: String,
-    pub port: u16,
 }
 
 #[derive(Debug, Deserialize)]

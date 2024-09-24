@@ -108,6 +108,10 @@ impl Gateway {
     }
 
     async fn handle_latency_stats(&self, stats: GatewayLatencyStats) -> Result<()> {
+        if self.gateway_config.gateway.name == stats.gateway_id {
+            debug!("received latency stats from self, ignoring");
+            return Ok(()); // ignore stats from self
+        }
         self.store
             .update_gateway_to_service_stats(stats, &self.services);
         Ok(())

@@ -12,6 +12,14 @@ orbit {
       port    = 8080
     }
   ]
+
+  transport {
+    type = "nats"
+    nats  {
+      url = "nats://localhost:4222"
+    }
+  }
+  
   
   heartbeat {
     interval = "15s"
