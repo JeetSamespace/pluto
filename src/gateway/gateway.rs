@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
+use tracing::{debug, error, info};
 
 use super::config::{GatewayConfig, ServiceConfig};
 use super::latency::get_service_latency;
@@ -58,12 +59,13 @@ impl Gateway {
     }
 
     pub async fn run(self: Arc<Self>) -> Result<()> {
+        info!("starting gateway");
         let stats_sender = self.spawn_stats_sender();
         let stats_receiver = self.spawn_stats_receiver();
 
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
-                println!("Received shutdown signal");
+                error!("Received shutdown signal");
             }
             res = stats_sender => {
                 let _ = res.context("Stats sender task failed")?;
@@ -78,16 +80,19 @@ impl Gateway {
     }
 
     fn spawn_stats_sender(self: &Arc<Self>) -> JoinHandle<Result<()>> {
+        debug!("spawning stats sender");
         let self_clone = Arc::clone(self);
         tokio::spawn(async move { self_clone.start_sending_stats().await })
     }
 
     fn spawn_stats_receiver(self: &Arc<Self>) -> JoinHandle<Result<()>> {
+        debug!("spawning stats receiver");
         let self_clone = Arc::clone(self);
         tokio::spawn(async move { self_clone.start_receiving_stats().await })
     }
 
     async fn start_receiving_stats(&self) -> Result<()> {
+        info!("starting receiving stats");
         let mut rcv = self
             .transport
             .subscribe_to_topics(&[PubSubTopics::SubscribeGatewayLatencyStats])
@@ -109,6 +114,7 @@ impl Gateway {
     }
 
     async fn start_sending_stats(&self) -> Result<()> {
+        info!("starting sending stats");
         let mut interval = tokio::time::interval(self.gateway_config.gateway.latency.interval);
 
         loop {
