@@ -6,8 +6,10 @@ use tracing::{debug, error, info};
 
 use super::config::{GatewayConfig, ServiceConfig};
 use super::latency::get_service_latency;
-use super::store::Store;
+use super::store::memory::InMemoryStore;
+use super::store::store;
 use crate::common::types::{GatewayLatencyStats, TransportType};
+use crate::gateway::store::store::Store;
 use crate::transport;
 use crate::transport::pubsub::{Message, PubSubManager};
 use crate::transport::topics::PubSubTopics;
@@ -18,7 +20,7 @@ pub struct Gateway {
     gateway_config: GatewayConfig,
     services: HashMap<String, ServiceConfig>,
     transport: Arc<PubSubManager<transport::nats::NatsPubSub>>,
-    store: Arc<Store>,
+    store: Arc<dyn store::Store>,
 }
 
 impl Gateway {
@@ -37,7 +39,7 @@ impl Gateway {
             id: conf.gateway.id.clone(),
             gateway_config: conf.clone(),
             transport: manager,
-            store: Arc::new(Store::new()),
+            store: Arc::new(InMemoryStore::new()),
             services,
         })
     }

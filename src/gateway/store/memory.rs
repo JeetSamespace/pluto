@@ -1,55 +1,19 @@
-use std::collections::HashMap;
-use std::sync::RwLock;
-use std::time::{Duration, SystemTime};
-use tracing::{debug, trace, warn};
+use std::{
+    collections::HashMap,
+    sync::RwLock,
+    time::{Duration, SystemTime},
+};
 
-use crate::common::types::GatewayLatencyStats;
-use crate::gateway::config::ServiceConfig;
+use tracing::{debug, info, trace, warn};
 
-#[derive(Debug, Clone)]
-pub struct GatewayToServiceStats {
-    pub latency: Duration,
-    pub last_updated: SystemTime,
-    pub service_config: ServiceConfig,
-}
+use crate::{common::types::GatewayLatencyStats, gateway::config::ServiceConfig};
 
-#[derive(Debug, Clone)]
-pub struct GatewayToGatewayStats {
-    pub latency: Duration,
-    pub last_updated: SystemTime,
-}
+use super::{
+    store::GatewayToGatewayStats, store::GatewayToServiceStats, store::OptimalPath, store::Store,
+};
 
-#[derive(Debug, Clone)]
-pub struct OptimalPath {
-    pub gateway: String,
-    pub latency: Duration,
-    pub last_updated: SystemTime,
-}
-
-/*
-This module defines the data structures and methods for managing and updating statistics related to gateways and services in a network.
-The main structure, `Store`, holds three types of data:
-1. `gateway_to_service`: A mapping from gateway IDs to service IDs, which contains statistics about the latency and last update time for each service.
-2. `gateway_to_gateway`: A mapping from gateway IDs to other gateway IDs, which contains statistics about the latency and last update time for each gateway-to-gateway connection.
-3. `optimal_paths`: A mapping from service IDs to the optimal gateway and the associated latency for reaching that service.
-
-The `Store` struct provides several methods for updating and retrieving these statistics:
-- `new`: Creates a new, empty `Store`.
-- `update_gateway_to_service_stats`: Updates the statistics for a given gateway and its associated services.
-- `update_gateway_to_gateway_stats`: Updates the statistics for a given gateway-to-gateway connection.
-- `update_optimal_path`: Calculates and updates the optimal gateway for a given service.
-- `get_optimal_service_path`: Retrieves the optimal gateway and latency for a given service.
-- `get_gateway_to_service_stats`: Retrieves the statistics for a given gateway and service.
-- `get_gateway_to_gateway_stats`: Retrieves the statistics for a given gateway-to-gateway connection.
-
-When `get_optimal_service_path` is called, it returns an `Option` containing a tuple with two elements:
-1. A `String` representing the gateway ID that has the optimal path to the service.
-2. A `Duration` representing the total latency for the optimal path.
-
-If no optimal path is found, the method returns `None`.
-*/
 #[derive(Debug)]
-pub struct Store {
+pub struct InMemoryStore {
     // Gateway ID -> Service ID -> Stats
     gateway_to_service: RwLock<HashMap<String, HashMap<String, GatewayToServiceStats>>>,
     // Gateway ID -> Gateway ID -> Stats
@@ -58,17 +22,17 @@ pub struct Store {
     optimal_paths: RwLock<HashMap<String, OptimalPath>>,
 }
 
-impl Store {
-    pub fn new() -> Self {
-        trace!("creating new store");
-        Store {
+impl Store for InMemoryStore {
+    fn new() -> Self {
+        info!("creating new in-memory store");
+        InMemoryStore {
             gateway_to_service: RwLock::new(HashMap::new()),
             gateway_to_gateway: RwLock::new(HashMap::new()),
             optimal_paths: RwLock::new(HashMap::new()),
         }
     }
 
-    pub fn update_gateway_to_service_stats(
+    fn update_gateway_to_service_stats(
         &self,
         stats: GatewayLatencyStats,
         service_configs: &HashMap<String, ServiceConfig>,
@@ -111,7 +75,7 @@ impl Store {
         }
     }
 
-    pub fn update_gateway_to_gateway_stats(
+    fn update_gateway_to_gateway_stats(
         &self,
         from_gateway: String,
         to_gateway: String,
@@ -148,6 +112,73 @@ impl Store {
         }
     }
 
+    fn get_optimal_service_path(&self, service_id: &str) -> Option<(String, Duration)> {
+        trace!("getting optimal service path for service: {}", service_id);
+        self.optimal_paths
+            .read()
+            .unwrap()
+            .get(service_id)
+            .map(|optimal_path| {
+                trace!(
+                    "found optimal path for service: {}. gateway: {}, latency: {:?}",
+                    service_id,
+                    optimal_path.gateway,
+                    optimal_path.latency
+                );
+                (optimal_path.gateway.clone(), optimal_path.latency)
+            })
+    }
+
+    fn get_gateway_to_service_stats(
+        &self,
+        gateway_id: &str,
+        service_id: &str,
+    ) -> Option<GatewayToServiceStats> {
+        trace!(
+            "getting gateway-to-service stats for gateway: {}, service: {}",
+            gateway_id,
+            service_id
+        );
+        self.gateway_to_service
+            .read()
+            .unwrap()
+            .get(gateway_id)
+            .and_then(|services| services.get(service_id).cloned())
+            .map(|stats| {
+                trace!(
+                    "found gateway-to-service stats. latency: {:?}",
+                    stats.latency
+                );
+                stats
+            })
+    }
+
+    fn get_gateway_to_gateway_stats(
+        &self,
+        from_gateway: &str,
+        to_gateway: &str,
+    ) -> Option<GatewayToGatewayStats> {
+        trace!(
+            "getting gateway-to-gateway stats for: {} -> {}",
+            from_gateway,
+            to_gateway
+        );
+        self.gateway_to_gateway
+            .read()
+            .unwrap()
+            .get(from_gateway)
+            .and_then(|gateways| gateways.get(to_gateway).cloned())
+            .map(|stats| {
+                trace!(
+                    "found gateway-to-gateway stats. latency: {:?}",
+                    stats.latency
+                );
+                stats
+            })
+    }
+}
+
+impl InMemoryStore {
     fn update_optimal_path(&self, service_id: &str) {
         trace!("updating optimal path for service: {}", service_id);
         if let Some((gateway, latency)) = self.calculate_optimal_service_path(service_id) {
@@ -170,23 +201,6 @@ impl Store {
                 service_id
             );
         }
-    }
-
-    pub fn get_optimal_service_path(&self, service_id: &str) -> Option<(String, Duration)> {
-        trace!("getting optimal service path for service: {}", service_id);
-        self.optimal_paths
-            .read()
-            .unwrap()
-            .get(service_id)
-            .map(|optimal_path| {
-                trace!(
-                    "found optimal path for service: {}. gateway: {}, latency: {:?}",
-                    service_id,
-                    optimal_path.gateway,
-                    optimal_path.latency
-                );
-                (optimal_path.gateway.clone(), optimal_path.latency)
-            })
     }
 
     fn calculate_optimal_service_path(&self, service_id: &str) -> Option<(String, Duration)> {
@@ -245,54 +259,6 @@ impl Store {
             (gateway, best_latency)
         })
     }
-
-    pub fn get_gateway_to_service_stats(
-        &self,
-        gateway_id: &str,
-        service_id: &str,
-    ) -> Option<GatewayToServiceStats> {
-        trace!(
-            "getting gateway-to-service stats for gateway: {}, service: {}",
-            gateway_id,
-            service_id
-        );
-        self.gateway_to_service
-            .read()
-            .unwrap()
-            .get(gateway_id)
-            .and_then(|services| services.get(service_id).cloned())
-            .map(|stats| {
-                trace!(
-                    "found gateway-to-service stats. latency: {:?}",
-                    stats.latency
-                );
-                stats
-            })
-    }
-
-    pub fn get_gateway_to_gateway_stats(
-        &self,
-        from_gateway: &str,
-        to_gateway: &str,
-    ) -> Option<GatewayToGatewayStats> {
-        trace!(
-            "getting gateway-to-gateway stats for: {} -> {}",
-            from_gateway,
-            to_gateway
-        );
-        self.gateway_to_gateway
-            .read()
-            .unwrap()
-            .get(from_gateway)
-            .and_then(|gateways| gateways.get(to_gateway).cloned())
-            .map(|stats| {
-                trace!(
-                    "found gateway-to-gateway stats. latency: {:?}",
-                    stats.latency
-                );
-                stats
-            })
-    }
 }
 
 #[cfg(test)]
@@ -307,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_new_store() {
-        let store = Store::new();
+        let store = InMemoryStore::new();
         assert!(store.gateway_to_service.read().unwrap().is_empty());
         assert!(store.gateway_to_gateway.read().unwrap().is_empty());
         assert!(store.optimal_paths.read().unwrap().is_empty());
@@ -315,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_update_gateway_to_service_stats() {
-        let store = Store::new();
+        let store = InMemoryStore::new();
         let mut stats = GatewayLatencyStats {
             gateway_id: "gateway1".to_string(),
             stats: HashMap::new(),
@@ -359,7 +325,7 @@ mod tests {
 
     #[test]
     fn test_update_gateway_to_gateway_stats() {
-        let store = Store::new();
+        let store = InMemoryStore::new();
         store.update_gateway_to_gateway_stats(
             "gateway1".to_string(),
             "gateway2".to_string(),
@@ -377,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_get_optimal_service_path() {
-        let store = Store::new();
+        let store = InMemoryStore::new();
         let mut optimal_paths = store.optimal_paths.write().unwrap();
         optimal_paths.insert(
             "service1".to_string(),
@@ -398,7 +364,7 @@ mod tests {
 
     #[test]
     fn test_get_gateway_to_service_stats() {
-        let store = Store::new();
+        let store = InMemoryStore::new();
         let mut gateway_to_service = store.gateway_to_service.write().unwrap();
         let mut services = HashMap::new();
         services.insert(
@@ -430,7 +396,7 @@ mod tests {
 
     #[test]
     fn test_get_gateway_to_gateway_stats() {
-        let store = Store::new();
+        let store = InMemoryStore::new();
         let mut gateway_to_gateway = store.gateway_to_gateway.write().unwrap();
         let mut gateways = HashMap::new();
         gateways.insert(
