@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tracing::debug;
 
 use super::topics::PubSubTopics;
 
@@ -42,6 +43,7 @@ impl<T: PubSub> PubSubManager<T> {
     }
 
     pub async fn broadcast(&self, topics: &[PubSubTopics], message: Message) -> Result<(), Error> {
+        debug!("broadcasting message to topics: {:?}", topics);
         for topic in topics {
             self.inner.publish(topic.clone(), message.clone()).await?;
         }
