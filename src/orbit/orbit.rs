@@ -72,7 +72,7 @@ impl Orbit {
         info!("starting receiving stats");
         let mut rcv = self
             .transport
-            .subscribe_to_topics(&[PubSubTopics::PublishGatewayLatencyStats])
+            .subscribe_to_topics(&[PubSubTopics::GatewayToOrbitStats])
             .await
             .context("Failed to subscribe to topics")?;
 

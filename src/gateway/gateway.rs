@@ -95,7 +95,7 @@ impl Gateway {
         info!("starting receiving stats");
         let mut rcv = self
             .transport
-            .subscribe_to_topics(&[PubSubTopics::SubscribeGatewayLatencyStats])
+            .subscribe_to_topics(&[PubSubTopics::OrbitToGatewayStats])
             .await
             .context("Failed to subscribe to topics")?;
 
@@ -136,7 +136,7 @@ impl Gateway {
 
             self.transport
                 .broadcast(
-                    &[PubSubTopics::PublishGatewayLatencyStats],
+                    &[PubSubTopics::GatewayToOrbitStats],
                     Message::GatewayLatencyStats(stats),
                 )
                 .await
