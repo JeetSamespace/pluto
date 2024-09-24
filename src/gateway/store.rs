@@ -1,90 +1,174 @@
-// This file defines a Store struct that manages the state of services and their associated gateways.
-// The Store struct contains a HashMap of services, where each service has a unique ID and contains
-// a collection of gateways. Each gateway has an ID, name, latency, status, and a timestamp of the last update.
-
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
+use crate::common::types::GatewayLatencyStats;
+use crate::gateway::config::ServiceConfig;
+
 #[derive(Debug, Clone)]
-pub struct GatewayStats {
-    id: String,
-    latency: u64,
-    last_updated: SystemTime,
+pub struct GatewayToServiceStats {
+    pub latency: Duration,
+    pub last_updated: SystemTime,
+    pub service_config: ServiceConfig,
 }
 
 #[derive(Debug, Clone)]
-pub struct ServiceStats {
-    id: String,
-    gateways: HashMap<String, GatewayStats>,
+pub struct GatewayToGatewayStats {
+    pub latency: Duration,
+    pub last_updated: SystemTime,
 }
 
+#[derive(Debug, Clone)]
+pub struct OptimalPath {
+    pub path: Vec<String>,
+    pub latency: Duration,
+    pub last_updated: SystemTime,
+}
+
+#[derive(Debug, Clone)]
 pub struct Store {
-    services: HashMap<String, ServiceStats>,
+    // Gateway ID -> Service ID -> Stats
+    gateway_to_service: HashMap<String, HashMap<String, GatewayToServiceStats>>,
+    // Gateway ID -> Gateway ID -> Stats
+    gateway_to_gateway: HashMap<String, HashMap<String, GatewayToGatewayStats>>,
+    // Service ID -> Optimal Path
+    optimal_paths: HashMap<String, OptimalPath>,
 }
 
 impl Store {
     pub fn new() -> Self {
         Store {
-            services: HashMap::new(),
+            gateway_to_service: HashMap::new(),
+            gateway_to_gateway: HashMap::new(),
+            optimal_paths: HashMap::new(),
         }
     }
 
-    pub fn update_service_gateways(&mut self, service_id: &str, gateways: Vec<GatewayStats>) {
-        let service = self
-            .services
-            .entry(service_id.to_string())
-            .or_insert_with(|| ServiceStats {
-                id: service_id.to_string(),
-                gateways: HashMap::new(),
-            });
-
-        for gateway in gateways {
-            service.gateways.insert(gateway.id.clone(), gateway);
-        }
-    }
-
-    pub fn get_service_with_lowest_latency(&self, service_id: &str) -> Option<&GatewayStats> {
-        self.services.get(service_id).and_then(|service| {
-            service
-                .gateways
-                .values()
-                .min_by_key(|gateway| gateway.latency)
-        })
-    }
-
-    pub fn add_service(&mut self, service: ServiceStats) {
-        self.services.insert(service.id.clone(), service);
-    }
-
-    pub fn get_service(&self, service_id: &str) -> Option<&ServiceStats> {
-        self.services.get(service_id)
-    }
-
-    pub fn update_gateway_status(
+    pub fn update_gateway_to_service_stats(
         &mut self,
-        service_id: &str,
-        gateway_id: &str,
-    ) -> Result<(), String> {
-        if let Some(service) = self.services.get_mut(service_id) {
-            if let Some(gateway) = service.gateways.get_mut(gateway_id) {
-                gateway.last_updated = SystemTime::now();
-                return Ok(());
+        stats: GatewayLatencyStats,
+        service_configs: &HashMap<String, ServiceConfig>,
+    ) {
+        let gateway_stats = self
+            .gateway_to_service
+            .entry(stats.gateway_id.clone())
+            .or_insert_with(HashMap::new);
+
+        let affected_services: Vec<String> = stats.stats.keys().cloned().collect();
+
+        for (service_id, service_stat) in stats.stats {
+            if let Some(service_config) = service_configs.get(&service_id) {
+                gateway_stats.insert(
+                    service_id,
+                    GatewayToServiceStats {
+                        latency: service_stat.latency,
+                        last_updated: SystemTime::now(),
+                        service_config: service_config.clone(),
+                    },
+                );
             }
         }
-        Err(format!(
-            "Gateway with id {} not found in service {}",
-            gateway_id, service_id
-        ))
+        // Update optimal paths for all affected services
+        for service_id in affected_services {
+            self.update_optimal_path(&service_id);
+        }
     }
 
-    pub fn remove_stale_gateways(&mut self, max_age: Duration) {
-        let now = SystemTime::now();
-        for service in self.services.values_mut() {
-            service.gateways.retain(|_, gateway| {
-                now.duration_since(gateway.last_updated)
-                    .unwrap_or_else(|_| Duration::new(0, 0))
-                    < max_age
-            });
+    pub fn update_gateway_to_gateway_stats(
+        &mut self,
+        from_gateway: String,
+        to_gateway: String,
+        latency: Duration,
+    ) {
+        let gateway_stats = self
+            .gateway_to_gateway
+            .entry(from_gateway)
+            .or_insert_with(HashMap::new);
+
+        gateway_stats.insert(
+            to_gateway,
+            GatewayToGatewayStats {
+                latency,
+                last_updated: SystemTime::now(),
+            },
+        );
+
+        // Update optimal paths for all services
+        let service_ids: Vec<String> = self.optimal_paths.keys().cloned().collect();
+        for service_id in service_ids {
+            self.update_optimal_path(&service_id);
         }
+    }
+
+    fn update_optimal_path(&mut self, service_id: &str) {
+        if let Some((path, latency)) = self.calculate_optimal_service_path(service_id) {
+            self.optimal_paths.insert(
+                service_id.to_string(),
+                OptimalPath {
+                    path,
+                    latency,
+                    last_updated: SystemTime::now(),
+                },
+            );
+        }
+    }
+
+    pub fn get_optimal_service_path(&self, service_id: &str) -> Option<(Vec<String>, Duration)> {
+        self.optimal_paths
+            .get(service_id)
+            .map(|optimal_path| (optimal_path.path.clone(), optimal_path.latency))
+    }
+
+    fn calculate_optimal_service_path(&self, service_id: &str) -> Option<(Vec<String>, Duration)> {
+        let mut best_path = None;
+        let mut best_latency = Duration::MAX;
+
+        // Check all gateways for direct connections
+        for (gateway_id, services) in &self.gateway_to_service {
+            if let Some(service_stats) = services.get(service_id) {
+                if service_stats.latency < best_latency {
+                    best_path = Some(vec![gateway_id.clone()]);
+                    best_latency = service_stats.latency;
+                }
+            }
+        }
+
+        // Check paths through other gateways
+        for (from_gateway, gateway_stats) in &self.gateway_to_gateway {
+            for (intermediate_gateway, gateway_to_gateway_stats) in gateway_stats {
+                if let Some(service_stats) = self
+                    .gateway_to_service
+                    .get(intermediate_gateway)
+                    .and_then(|services| services.get(service_id))
+                {
+                    let total_latency = gateway_to_gateway_stats.latency + service_stats.latency;
+                    if total_latency < best_latency {
+                        best_latency = total_latency;
+                        best_path = Some(vec![from_gateway.clone(), intermediate_gateway.clone()]);
+                    }
+                }
+            }
+        }
+
+        best_path.map(|path| (path, best_latency))
+    }
+
+    pub fn get_gateway_to_service_stats(
+        &self,
+        gateway_id: &str,
+        service_id: &str,
+    ) -> Option<&GatewayToServiceStats> {
+        self.gateway_to_service
+            .get(gateway_id)
+            .and_then(|services| services.get(service_id))
+    }
+
+    pub fn get_gateway_to_gateway_stats(
+        &self,
+        from_gateway: &str,
+        to_gateway: &str,
+    ) -> Option<&GatewayToGatewayStats> {
+        self.gateway_to_gateway
+            .get(from_gateway)
+            .and_then(|gateways| gateways.get(to_gateway))
     }
 }
