@@ -3,21 +3,22 @@ use std::time::{Duration, SystemTime};
 
 use crate::common::types::GatewayLatencyStats;
 use crate::gateway::config::ServiceConfig;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayToServiceStats {
     pub latency: Duration,
     pub last_updated: SystemTime,
     pub service_config: ServiceConfig,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayToGatewayStats {
     pub latency: Duration,
     pub last_updated: SystemTime,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OptimalPath {
     pub gateway: String,
     pub latency: Duration,

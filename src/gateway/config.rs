@@ -20,7 +20,7 @@ pub struct Gateway {
     pub failover: FailoverConfig,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ServiceConfig {
     pub id: String,
     pub address: String,
@@ -28,7 +28,7 @@ pub struct ServiceConfig {
     pub health_check: HealthCheckConfig,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HealthCheckConfig {
     pub r#type: HealthCheckType,
     #[serde(with = "handle_duration_string")]
