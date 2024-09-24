@@ -3,10 +3,13 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use log::debug;
 use tokio::task::JoinHandle;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use crate::{
-    common::types::TransportType,
+    common::{
+        error::Error,
+        types::{GatewayLatencyStats, TransportType},
+    },
     transport::{
         self,
         pubsub::{Message, PubSubManager},
@@ -74,13 +77,25 @@ impl Orbit {
             .transport
             .subscribe_to_topics(&[PubSubTopics::GatewayToOrbitStats])
             .await
-            .context("Failed to subscribe to topics")?;
+            .context("failed to subscribe to topics")?;
 
         while let Some(msg) = rcv.recv().await {
             if let Message::GatewayLatencyStats(stats) = msg {
-                println!("Received stats: {:?}", stats);
+                trace!("received stats: {:?}", stats);
+                self.broadcast_stats(stats).await?;
             }
         }
+        Ok(())
+    }
+
+    async fn broadcast_stats(&self, stats: GatewayLatencyStats) -> Result<(), Error> {
+        info!("broadcasting stats");
+        self.transport
+            .broadcast(
+                &[PubSubTopics::OrbitToGatewayStats],
+                Message::GatewayLatencyStats(stats),
+            )
+            .await?;
         Ok(())
     }
 }
