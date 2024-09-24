@@ -1,40 +1,28 @@
+use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::task::JoinHandle;
 
 use super::config::{GatewayConfig, ServiceConfig};
 use super::latency::get_service_latency;
 use super::store::Store;
 use crate::common::types::{GatewayLatencyStats, TransportType};
+use crate::transport;
 use crate::transport::pubsub::{Message, PubSubManager};
 use crate::transport::topics::PubSubTopics;
-use crate::transport::{self};
 
 pub struct Gateway {
     id: String,
     gateway_config: GatewayConfig,
     services: HashMap<String, ServiceConfig>,
-    transport: PubSubManager<transport::nats::NatsPubSub>,
-    store: Store,
+    transport: Arc<PubSubManager<transport::nats::NatsPubSub>>,
+    store: Arc<Store>,
 }
 
 impl Gateway {
-    pub async fn new(conf: &GatewayConfig) -> Self {
-        let transport = match conf.gateway.transport.transport_type {
-            TransportType::Nats => {
-                let nats_config = conf
-                    .gateway
-                    .transport
-                    .nats
-                    .clone()
-                    .expect("NATS configuration missing");
-                transport::nats::NatsPubSub::new(nats_config)
-                    .await
-                    .expect("Failed to create NATS PubSub")
-            }
-            _ => panic!("Invalid transport type"),
-        };
-
-        let manager = PubSubManager::new(transport);
+    pub async fn new(conf: &GatewayConfig) -> Result<Self> {
+        let transport = Self::create_transport(conf).await?;
+        let manager = Arc::new(PubSubManager::new(transport));
 
         let services = conf
             .gateway
@@ -43,62 +31,92 @@ impl Gateway {
             .map(|service| (service.id.clone(), service.clone()))
             .collect();
 
-        Gateway {
+        Ok(Gateway {
             id: conf.gateway.name.clone(),
             gateway_config: conf.clone(),
             transport: manager,
-            store: Store::new().into(),
+            store: Arc::new(Store::new()),
             services,
+        })
+    }
+
+    async fn create_transport(conf: &GatewayConfig) -> Result<transport::nats::NatsPubSub> {
+        match conf.gateway.transport.transport_type {
+            TransportType::Nats => {
+                let nats_config = conf
+                    .gateway
+                    .transport
+                    .nats
+                    .clone()
+                    .context("NATS configuration missing")?;
+                transport::nats::NatsPubSub::new(nats_config)
+                    .await
+                    .context("Failed to create NATS PubSub")
+            }
+            _ => anyhow::bail!("Invalid transport type"),
         }
     }
 
-    pub async fn run(self: Arc<Self>) {
-        let self_clone = Arc::clone(&self);
-        tokio::spawn(async move {
-            self_clone.start_sending_stats().await;
-        });
+    pub async fn run(self: Arc<Self>) -> Result<()> {
+        let stats_sender = self.spawn_stats_sender();
+        let stats_receiver = self.spawn_stats_receiver();
 
-        let self_clone = Arc::clone(&self);
-        tokio::spawn(async move {
-            self_clone.start_receiving_stats().await;
-        });
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                println!("Received shutdown signal");
+            }
+            res = stats_sender => {
+                let _ = res.context("Stats sender task failed")?;
+            }
+            res = stats_receiver => {
+                let _ = res.context("Stats receiver task failed")?;
+            }
+        }
 
-        // should block until the program is terminated
-        tokio::signal::ctrl_c().await.unwrap();
+        println!("Shutting down gateway");
+        Ok(())
     }
 
-    async fn start_receiving_stats(&self) {
+    fn spawn_stats_sender(self: &Arc<Self>) -> JoinHandle<Result<()>> {
+        let self_clone = Arc::clone(self);
+        tokio::spawn(async move { self_clone.start_sending_stats().await })
+    }
+
+    fn spawn_stats_receiver(self: &Arc<Self>) -> JoinHandle<Result<()>> {
+        let self_clone = Arc::clone(self);
+        tokio::spawn(async move { self_clone.start_receiving_stats().await })
+    }
+
+    async fn start_receiving_stats(&self) -> Result<()> {
         let mut rcv = self
             .transport
             .subscribe_to_topics(&[PubSubTopics::SubscribeGatewayLatencyStats])
             .await
-            .expect("Failed to subscribe to topics");
+            .context("Failed to subscribe to topics")?;
 
         while let Some(msg) = rcv.recv().await {
-            match msg {
-                Message::GatewayLatencyStats(stats) => {
-                    self.handle_latency_stats(stats).await;
-                }
-                _ => (),
+            if let Message::GatewayLatencyStats(stats) = msg {
+                self.handle_latency_stats(stats).await?;
             }
         }
+        Ok(())
     }
 
-    async fn handle_latency_stats(&self, stats: GatewayLatencyStats) {
-        let mut store = self.store.clone();
-        store.update_gateway_to_service_stats(stats, &self.services);
+    async fn handle_latency_stats(&self, stats: GatewayLatencyStats) -> Result<()> {
+        self.store
+            .update_gateway_to_service_stats(stats, &self.services);
+        Ok(())
     }
 
-    async fn start_sending_stats(&self) {
+    async fn start_sending_stats(&self) -> Result<()> {
         let mut interval = tokio::time::interval(self.gateway_config.gateway.latency.interval);
 
         loop {
-            let latencies = futures_util::future::join_all(
-                self.services
-                    .iter()
-                    .map(|service| get_service_latency(&service.1)),
-            )
-            .await;
+            interval.tick().await;
+
+            let latencies =
+                futures_util::future::join_all(self.services.values().map(get_service_latency))
+                    .await;
 
             let mut stats = GatewayLatencyStats::new(self.id.clone());
 
@@ -109,12 +127,10 @@ impl Gateway {
             self.transport
                 .broadcast(
                     &[PubSubTopics::PublishGatewayLatencyStats],
-                    transport::pubsub::Message::GatewayLatencyStats(stats),
+                    Message::GatewayLatencyStats(stats),
                 )
                 .await
-                .expect("Failed to broadcast gateway latency stats");
-
-            interval.tick().await;
+                .context("Failed to broadcast gateway latency stats")?;
         }
     }
 }
