@@ -9,7 +9,7 @@ pub struct GatewayConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Gateway {
-    pub name: String,
+    pub id: String,
     pub region: String,
     pub listen_port: u16,
 

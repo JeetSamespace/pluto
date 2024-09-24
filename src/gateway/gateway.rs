@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use pingora::server::Server;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
@@ -9,7 +8,6 @@ use super::config::{GatewayConfig, ServiceConfig};
 use super::latency::get_service_latency;
 use super::store::Store;
 use crate::common::types::{GatewayLatencyStats, TransportType};
-use crate::gateway::pingora::run_pingora;
 use crate::transport;
 use crate::transport::pubsub::{Message, PubSubManager};
 use crate::transport::topics::PubSubTopics;
@@ -36,7 +34,7 @@ impl Gateway {
             .collect();
 
         Ok(Gateway {
-            id: conf.gateway.name.clone(),
+            id: conf.gateway.id.clone(),
             gateway_config: conf.clone(),
             transport: manager,
             store: Arc::new(Store::new()),
@@ -136,7 +134,7 @@ impl Gateway {
     }
 
     async fn handle_latency_stats(&self, stats: GatewayLatencyStats) -> Result<()> {
-        if self.gateway_config.gateway.name == stats.gateway_id {
+        if self.gateway_config.gateway.id == stats.gateway_id {
             debug!("received latency stats from self, ignoring");
             return Ok(()); // ignore stats from self
         }

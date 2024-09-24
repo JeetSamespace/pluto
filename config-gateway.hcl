@@ -1,7 +1,7 @@
 
 
 gateway {
-  name        = "frankfurt-gateway"
+  id        = "frankfurt-gateway"
   region      = "eu-central-1"
   listen_port = 8080
   
