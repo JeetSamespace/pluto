@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 use std::time::{Duration, SystemTime};
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, trace, warn};
 
 use crate::common::types::GatewayLatencyStats;
 use crate::gateway::config::ServiceConfig;
@@ -270,5 +270,160 @@ impl Store {
                 );
                 stats
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        common::types::ServiceStatus,
+        gateway::config::{HealthCheckConfig, HealthCheckType},
+    };
+
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn test_new_store() {
+        let store = Store::new();
+        assert!(store.gateway_to_service.read().unwrap().is_empty());
+        assert!(store.gateway_to_gateway.read().unwrap().is_empty());
+        assert!(store.optimal_paths.read().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_update_gateway_to_service_stats() {
+        let store = Store::new();
+        let mut stats = GatewayLatencyStats {
+            gateway_id: "gateway1".to_string(),
+            stats: HashMap::new(),
+        };
+        stats.stats.insert(
+            "service1".to_string(),
+            crate::common::types::ServiceStat {
+                latency: Duration::from_secs(1),
+                service_id: "service1".to_string(),
+                status: ServiceStatus::Up,
+                error: None,
+            },
+        );
+        let mut service_configs = HashMap::new();
+        service_configs.insert(
+            "service1".to_string(),
+            ServiceConfig {
+                id: "service1".to_string(),
+                address: "localhost".to_string(),
+                port: 8080,
+                health_check: HealthCheckConfig {
+                    r#type: HealthCheckType::Http,
+                    url: Some("http://localhost:8080/health".to_string()),
+                    interval: Duration::from_secs(5),
+                    timeout: Duration::from_secs(2),
+                },
+                // Add other necessary fields
+            },
+        );
+
+        store.update_gateway_to_service_stats(stats, &service_configs);
+
+        let gateway_to_service = store.gateway_to_service.read().unwrap();
+        assert!(gateway_to_service.contains_key("gateway1"));
+        assert!(gateway_to_service["gateway1"].contains_key("service1"));
+        assert_eq!(
+            gateway_to_service["gateway1"]["service1"].latency,
+            Duration::from_secs(1)
+        );
+    }
+
+    #[test]
+    fn test_update_gateway_to_gateway_stats() {
+        let store = Store::new();
+        store.update_gateway_to_gateway_stats(
+            "gateway1".to_string(),
+            "gateway2".to_string(),
+            Duration::from_secs(2),
+        );
+
+        let gateway_to_gateway = store.gateway_to_gateway.read().unwrap();
+        assert!(gateway_to_gateway.contains_key("gateway1"));
+        assert!(gateway_to_gateway["gateway1"].contains_key("gateway2"));
+        assert_eq!(
+            gateway_to_gateway["gateway1"]["gateway2"].latency,
+            Duration::from_secs(2)
+        );
+    }
+
+    #[test]
+    fn test_get_optimal_service_path() {
+        let store = Store::new();
+        let mut optimal_paths = store.optimal_paths.write().unwrap();
+        optimal_paths.insert(
+            "service1".to_string(),
+            OptimalPath {
+                path: vec!["gateway1".to_string(), "gateway2".to_string()],
+                latency: Duration::from_secs(3),
+                last_updated: SystemTime::now(),
+            },
+        );
+        drop(optimal_paths);
+
+        let result = store.get_optimal_service_path("service1");
+        assert!(result.is_some());
+        let (path, latency) = result.unwrap();
+        assert_eq!(path, vec!["gateway1".to_string(), "gateway2".to_string()]);
+        assert_eq!(latency, Duration::from_secs(3));
+    }
+
+    #[test]
+    fn test_get_gateway_to_service_stats() {
+        let store = Store::new();
+        let mut gateway_to_service = store.gateway_to_service.write().unwrap();
+        let mut services = HashMap::new();
+        services.insert(
+            "service1".to_string(),
+            GatewayToServiceStats {
+                latency: Duration::from_secs(1),
+                last_updated: SystemTime::now(),
+                service_config: ServiceConfig {
+                    id: "service1".to_string(),
+                    address: "localhost".to_string(),
+                    port: 8080,
+                    health_check: HealthCheckConfig {
+                        r#type: HealthCheckType::Http,
+                        url: Some("http://localhost:8080/health".to_string()),
+                        interval: Duration::from_secs(5),
+                        timeout: Duration::from_secs(2),
+                    },
+                },
+            },
+        );
+        gateway_to_service.insert("gateway1".to_string(), services);
+        drop(gateway_to_service);
+
+        let result = store.get_gateway_to_service_stats("gateway1", "service1");
+        assert!(result.is_some());
+        let stats = result.unwrap();
+        assert_eq!(stats.latency, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn test_get_gateway_to_gateway_stats() {
+        let store = Store::new();
+        let mut gateway_to_gateway = store.gateway_to_gateway.write().unwrap();
+        let mut gateways = HashMap::new();
+        gateways.insert(
+            "gateway2".to_string(),
+            GatewayToGatewayStats {
+                latency: Duration::from_secs(2),
+                last_updated: SystemTime::now(),
+            },
+        );
+        gateway_to_gateway.insert("gateway1".to_string(), gateways);
+        drop(gateway_to_gateway);
+
+        let result = store.get_gateway_to_gateway_stats("gateway1", "gateway2");
+        assert!(result.is_some());
+        let stats = result.unwrap();
+        assert_eq!(stats.latency, Duration::from_secs(2));
     }
 }
