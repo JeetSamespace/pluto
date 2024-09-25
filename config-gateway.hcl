@@ -1,13 +1,13 @@
 
 
 gateway {
-  id        = "frankfurt-gateway"
-  region      = "eu-central-1"
+  id        = "mumbai-gateway"
+  region      = "ap-south-1"
   listen_port = 8080
   
   services = [
     {
-      id = "asr"
+      id = "llm"
       name    = "asr"
       address = "127.0.0.1"
       port    = 5500
@@ -19,7 +19,7 @@ gateway {
       }
     },
     {
-      id = "tts"
+      id = "chat"
       name    = "tts"
       address = "127.0.0.1"
       port    = 5501
@@ -28,18 +28,7 @@ gateway {
         interval = "10s"
         timeout = "2s"
       }
-    },
-    {
-      id = "llm"
-      name    = "llm"
-      address = "127.0.0.1"
-      port    = 5502
-      health_check = {
-        type = "tcp"
-        interval = "10s"
-        timeout = "2s"
-      }
-    },
+    }
   ]
 
   transport {

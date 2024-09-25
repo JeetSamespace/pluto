@@ -20,7 +20,6 @@ orbit {
     }
   }
   
-  
   heartbeat {
     interval = "15s"
     timeout  = "3s"

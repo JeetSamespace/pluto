@@ -15,7 +15,7 @@ pub enum PubSubTopics {
 impl PubSubTopics {
     pub fn as_str(&self) -> &'static str {
         match self {
-            PubSubTopics::GatewayToOrbitStats => "orbit.gateway.latency.stats", // from gateway to orbit
+            PubSubTopics::GatewayToOrbitStats => "orbit.latency.stats", // from gateway to orbit
             PubSubTopics::OrbitToGatewayStats => "orbit.*.latency.stats", // from orbit to gateway
             PubSubTopics::PublishGatewayHeartbeat => "orbit.gateway.heartbeat", // from gateway to orbit
             PubSubTopics::SubscribeGatewayHeartbeat => "orbit.*.heartbeat", // from orbit to gateway

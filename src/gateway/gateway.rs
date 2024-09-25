@@ -7,9 +7,8 @@ use tracing::{debug, error, info};
 use super::config::{GatewayConfig, ServiceConfig};
 use super::latency::get_service_latency;
 use super::store::memory::InMemoryStore;
-use super::store::store;
 use crate::common::types::{GatewayLatencyStats, TransportType};
-use crate::gateway::store::store::Store;
+use crate::gateway::store::store::Store as StoreTrait;
 use crate::transport;
 use crate::transport::pubsub::{Message, PubSubManager};
 use crate::transport::topics::PubSubTopics;
@@ -20,7 +19,7 @@ pub struct Gateway {
     gateway_config: GatewayConfig,
     services: HashMap<String, ServiceConfig>,
     transport: Arc<PubSubManager<transport::nats::NatsPubSub>>,
-    store: Arc<dyn store::Store>,
+    store: Arc<dyn StoreTrait>,
 }
 
 impl Gateway {
@@ -140,8 +139,8 @@ impl Gateway {
             debug!("received latency stats from self, ignoring");
             return Ok(()); // ignore stats from self
         }
-        self.store
-            .update_gateway_to_service_stats(stats, &self.services);
+        info!("received latency stats: {:?}", stats);
+        self.store.update_gateway_to_service_stats(stats);
         Ok(())
     }
 }

@@ -1,15 +1,13 @@
-use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
 use crate::common::types::GatewayLatencyStats;
-use crate::gateway::config::ServiceConfig;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayToServiceStats {
+    pub service_id: String,
     pub latency: Duration,
     pub last_updated: SystemTime,
-    pub service_config: ServiceConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,11 +27,7 @@ pub trait Store: Send + Sync + std::fmt::Debug {
     fn new() -> Self
     where
         Self: Sized;
-    fn update_gateway_to_service_stats(
-        &self,
-        stats: GatewayLatencyStats,
-        service_configs: &HashMap<String, ServiceConfig>,
-    );
+    fn update_gateway_to_service_stats(&self, stats: GatewayLatencyStats);
     fn update_gateway_to_gateway_stats(
         &self,
         from_gateway: String,

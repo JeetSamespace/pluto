@@ -6,7 +6,7 @@ use std::{
 
 use tracing::{debug, info, trace, warn};
 
-use crate::{common::types::GatewayLatencyStats, gateway::config::ServiceConfig};
+use crate::common::types::GatewayLatencyStats;
 
 use super::{
     store::GatewayToGatewayStats, store::GatewayToServiceStats, store::OptimalPath, store::Store,
@@ -32,11 +32,7 @@ impl Store for InMemoryStore {
         }
     }
 
-    fn update_gateway_to_service_stats(
-        &self,
-        stats: GatewayLatencyStats,
-        service_configs: &HashMap<String, ServiceConfig>,
-    ) {
+    fn update_gateway_to_service_stats(&self, stats: GatewayLatencyStats) {
         trace!(
             "updating gateway-to-service stats for gateway: {}",
             stats.gateway_id
@@ -49,23 +45,18 @@ impl Store for InMemoryStore {
         let affected_services: Vec<String> = stats.stats.keys().cloned().collect();
 
         for (service_id, service_stat) in stats.stats {
-            if let Some(service_config) = service_configs.get(&service_id) {
-                gateway_stats.insert(
-                    service_id.clone(),
-                    GatewayToServiceStats {
-                        latency: service_stat.latency,
-                        last_updated: SystemTime::now(),
-                        service_config: service_config.clone(),
-                    },
-                );
-                trace!(
-                    "updated stats for service: {} with latency: {:?}",
-                    service_id,
-                    service_stat.latency
-                );
-            } else {
-                warn!("service config not found for service: {}", service_id);
-            }
+            gateway_stats.insert(
+                service_id.clone(),
+                GatewayToServiceStats {
+                    service_id: service_id.clone(),
+                    latency: service_stat.latency,
+                    last_updated: SystemTime::now(),
+                },
+            );
+            info!(
+                "updated stats for service: {} with latency: {:?}",
+                service_id, service_stat.latency
+            );
         }
         drop(gateway_to_service);
 
@@ -263,10 +254,7 @@ impl InMemoryStore {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        common::types::ServiceStatus,
-        gateway::config::{HealthCheckConfig, HealthCheckType},
-    };
+    use crate::common::types::ServiceStatus;
 
     use super::*;
     use std::time::Duration;
@@ -295,24 +283,8 @@ mod tests {
                 error: None,
             },
         );
-        let mut service_configs = HashMap::new();
-        service_configs.insert(
-            "service1".to_string(),
-            ServiceConfig {
-                id: "service1".to_string(),
-                address: "localhost".to_string(),
-                port: 8080,
-                health_check: HealthCheckConfig {
-                    r#type: HealthCheckType::Http,
-                    url: Some("http://localhost:8080/health".to_string()),
-                    interval: Duration::from_secs(5),
-                    timeout: Duration::from_secs(2),
-                },
-                // Add other necessary fields
-            },
-        );
 
-        store.update_gateway_to_service_stats(stats, &service_configs);
+        store.update_gateway_to_service_stats(stats);
 
         let gateway_to_service = store.gateway_to_service.read().unwrap();
         assert!(gateway_to_service.contains_key("gateway1"));
@@ -370,19 +342,9 @@ mod tests {
         services.insert(
             "service1".to_string(),
             GatewayToServiceStats {
+                service_id: "service1".to_string(),
                 latency: Duration::from_secs(1),
                 last_updated: SystemTime::now(),
-                service_config: ServiceConfig {
-                    id: "service1".to_string(),
-                    address: "localhost".to_string(),
-                    port: 8080,
-                    health_check: HealthCheckConfig {
-                        r#type: HealthCheckType::Http,
-                        url: Some("http://localhost:8080/health".to_string()),
-                        interval: Duration::from_secs(5),
-                        timeout: Duration::from_secs(2),
-                    },
-                },
             },
         );
         gateway_to_service.insert("gateway1".to_string(), services);
