@@ -18,6 +18,7 @@ pub struct Gateway {
     pub latency: LatencyConfig,
     pub heartbeat: HeartbeatConfig,
     pub failover: FailoverConfig,
+    pub blacklist: BlacklistConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -69,6 +70,15 @@ pub struct FailoverConfig {
     pub interval: Duration,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct BlacklistConfig {
+    pub id_key: String,
+    pub ttl: String,
+    pub token_type: String,
+    pub token_secret: String,
+}
+
+// Make sure this function is public
 pub fn read_gateway_config() -> Result<GatewayConfig, Box<dyn std::error::Error>> {
     let config_path =
         std::env::var("GATEWAY_CONFIG_PATH").unwrap_or_else(|_| "config-gateway.hcl".to_string());

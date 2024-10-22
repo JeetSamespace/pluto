@@ -64,4 +64,11 @@ gateway {
     retries  = 5
     interval = "2s"
   }
+
+  blacklist {
+    id_key = "user_id"
+    token_type = "jwt"
+    token_secret = "cake"
+    ttl = "8s"
+  }
 }

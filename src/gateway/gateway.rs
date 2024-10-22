@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use pingora::server::Server;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
@@ -9,7 +8,6 @@ use super::config::{GatewayConfig, ServiceConfig};
 use super::latency::get_service_latency;
 use super::store::Store;
 use crate::common::types::{GatewayLatencyStats, TransportType};
-use crate::gateway::pingora::run_pingora;
 use crate::transport;
 use crate::transport::pubsub::{Message, PubSubManager};
 use crate::transport::topics::PubSubTopics;

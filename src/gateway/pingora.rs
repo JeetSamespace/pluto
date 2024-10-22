@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use bytes::Bytes;
 use pingora::http::RequestHeader;
 use pingora::services::background::background_service;
 use std::{sync::Arc, time::Duration};
@@ -10,6 +11,7 @@ use pingora::server::configuration::Opt;
 use pingora::server::Server;
 use pingora::upstreams::peer::HttpPeer;
 use pingora::Result;
+use crate::gateway::blacklist::handle_blacklist;
 
 pub struct LB(Arc<LoadBalancer<RoundRobin>>);
 
@@ -17,6 +19,17 @@ pub struct LB(Arc<LoadBalancer<RoundRobin>>);
 impl ProxyHttp for LB {
     type CTX = ();
     fn new_ctx(&self) -> Self::CTX {}
+
+    async fn request_filter(&self, session: &mut Session, _ctx: &mut Self::CTX) -> Result<bool> {
+        let is_blacklisted = handle_blacklist(session.req_header()).await;
+        if is_blacklisted {
+            let _ = session.write_response_body(Some(Bytes::from("You are blacklisted")), false).await?;
+            let _ = session.respond_error(403).await?;
+            session.body_bytes_sent();
+            return Ok(true);
+        }
+        Ok(false)   
+    }
 
     async fn upstream_peer(&self, _session: &mut Session, _ctx: &mut ()) -> Result<Box<HttpPeer>> {
         let upstream = self

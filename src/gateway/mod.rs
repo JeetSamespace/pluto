@@ -5,3 +5,4 @@ pub mod latency;
 pub mod pingora;
 pub mod router;
 pub mod store;
+pub mod blacklist;
