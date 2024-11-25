@@ -17,6 +17,7 @@ pub struct Orbit {
     pub security: SecurityConfig,
     pub logging: LoggingConfig,
     pub metrics: MetricsConfig,
+    pub api: ApiServerConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,6 +70,13 @@ pub struct MetricsConfig {
     pub enabled: bool,
     pub endpoint: String,
 }
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ApiServerConfig {
+    pub host: String,
+    pub port: i16,
+}
+
 
 pub fn read_orbit_config() -> Result<OrbitConfig, Box<dyn std::error::Error>> {
     let config_path =

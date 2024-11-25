@@ -2,6 +2,11 @@ orbit {
   listen_port = 9090
   max_connections = 1000
 
+  api {
+    host = "127.0.0.1"
+    port = 3001
+  }
+
   gateways = [
     {
       host = "203.0.113.1"
@@ -19,6 +24,8 @@ orbit {
       url = "nats://localhost:4222"
     }
   }
+
+  
   
   
   heartbeat {

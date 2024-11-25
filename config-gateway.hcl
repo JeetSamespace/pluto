@@ -42,6 +42,11 @@ gateway {
     },
   ]
 
+  api {
+    ip = "127.0.0.1"
+    port = 3005
+  }
+
   transport {
     type = "nats"
     nats  {
@@ -72,3 +77,4 @@ gateway {
     ttl = "8s"
   }
 }
+

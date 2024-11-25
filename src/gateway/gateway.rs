@@ -19,6 +19,8 @@ pub struct Gateway {
     services: HashMap<String, ServiceConfig>,
     transport: Arc<PubSubManager<transport::nats::NatsPubSub>>,
     store: Arc<Store>,
+    pub api_ip: String,
+    pub api_port: u16,
 }
 
 impl Gateway {
@@ -39,6 +41,8 @@ impl Gateway {
             transport: manager,
             store: Arc::new(Store::new()),
             services,
+            api_ip: conf.gateway.api.ip.clone(),
+            api_port: conf.gateway.api.port,
         })
     }
 

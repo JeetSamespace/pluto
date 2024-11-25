@@ -19,6 +19,7 @@ pub struct Gateway {
     pub heartbeat: HeartbeatConfig,
     pub failover: FailoverConfig,
     pub blacklist: BlacklistConfig,
+    pub api:  ApiConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -27,6 +28,12 @@ pub struct ServiceConfig {
     pub address: String,
     pub port: u16,
     pub health_check: HealthCheckConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ApiConfig {
+    pub ip: String,
+    pub port: u16
 }
 
 #[derive(Debug, Clone, Deserialize)]

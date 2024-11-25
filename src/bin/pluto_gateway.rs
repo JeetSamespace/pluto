@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use pluto::common::logger::init_logger;
 use pluto::gateway::{config, gateway::Gateway};
 use tracing::error;
@@ -14,7 +13,7 @@ fn main() {
     match pluto_gateway {
         Ok(gateway) => {
             let gateway = Arc::new(gateway);
-            if let Err(e) = gateway.start_pingora_server() {
+            if let Err(e) = gateway.clone().start_pingora_server() {
                 println!("Pluto Gateway exited with error: {}", e);
             }
 
